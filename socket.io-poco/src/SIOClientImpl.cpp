@@ -249,7 +249,7 @@ void SIOClientImpl::emit(std::string endpoint, std::string eventname, std::strin
 
 bool SIOClientImpl::receive() {
 
-	char buffer[1024];
+	char buffer[2048];
 	int flags;
 	int n;
 

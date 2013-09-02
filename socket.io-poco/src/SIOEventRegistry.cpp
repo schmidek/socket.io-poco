@@ -1,4 +1,5 @@
 #include "SIOEventRegistry.h"
+#include "talk/base/logging.h"
 
 SIOEventRegistry::SIOEventRegistry(void)
 {
@@ -48,7 +49,7 @@ void SIOEventRegistry::fireEvent(SIOClient *client, const char *name, Object::Pt
 	{
 
 		//no event handler found
-
+		LOG(INFO) << "No Event handler found";
 	}
 
 }
