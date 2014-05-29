@@ -25,9 +25,9 @@ SIOClient::~SIOClient() {
 	SIOClientRegistry::instance()->removeClient(_uri);
 }
 
-SIOClient* SIOClient::connect(std::string uri) {
+SIOClient* SIOClient::connect(std::string uri, const std::string& accessToken) {
 
-	//check if connection to endpoint exists 
+	//check if connection to endpoint exists
 	URI tmp_uri(uri);
 	std::stringstream ss;
 	ss << tmp_uri.getHost() << ":" << tmp_uri.getPort() << tmp_uri.getPath();
@@ -45,21 +45,21 @@ SIOClient* SIOClient::connect(std::string uri) {
 
 		if(!impl) {
 
-			impl = SIOClientImpl::connect(tmp_uri.getHost(), tmp_uri.getPort());
+			impl = SIOClientImpl::connect(tmp_uri.getHost(), tmp_uri.getPort(), accessToken);
 
 			if (!impl) return NULL; //connect failed
 
 			SIOClientRegistry::instance()->addSocket(impl, spath);
-			
-		} 
-		
+
+		}
+
 		if(tmp_uri.getPath() != "") {
 			impl->connectToEndpoint(tmp_uri.getPath());
 		}
 
 		c = new SIOClient(fullpath, tmp_uri.getPath(), impl);
 		SIOClientRegistry::instance()->addClient(c);
-		
+
 	}
 
 	//TODO: add method to handle force new connection

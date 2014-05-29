@@ -12,21 +12,21 @@ private:
 	~SIOClient();
 
 	SIOClientImpl *_socket;
-	
+
 	std::string _uri;
 	std::string _endpoint;
 
 	NotificationCenter* _nCenter;
 
 	SIOEventRegistry *_registry;
-	SIONotificationHandler *_sioHandler; 
+	SIONotificationHandler *_sioHandler;
 
 public:
 	SIOClient(std::string uri, std::string endpoint, SIOClientImpl *impl);
 
 	bool init();
 
-	static SIOClient* connect(std::string uri);
+	static SIOClient* connect(std::string uri, const std::string& accessToken="");
 	void disconnect();
 	void send(std::string s);
 	void emit(std::string eventname, std::string args);

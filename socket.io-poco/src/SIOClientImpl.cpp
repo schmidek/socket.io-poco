@@ -1,5 +1,6 @@
 #include "SIOClientImpl.h"
 
+#include <Poco/Net/HTMLForm.h>
 #include "Poco/Net/HTTPRequest.h"
 #include "Poco/Net/HTTPResponse.h"
 #include "Poco/Net/HTTPMessage.h"
@@ -21,6 +22,7 @@
 #include "SIOClientRegistry.h"
 #include "SIOClient.h"
 
+using Poco::Net::HTMLForm;
 using Poco::Net::HTTPClientSession;
 using Poco::Net::HTTPRequest;
 using Poco::Net::HTTPResponse;
@@ -42,20 +44,21 @@ SIOClientImpl::SIOClientImpl() {
 	SIOClientImpl("localhost", 3000);
 }
 
-SIOClientImpl::SIOClientImpl(std::string host, int port) :
+SIOClientImpl::SIOClientImpl(std::string host, int port, std::string accessToken) :
 	_port(port),
 	_host(host),
-	_refCount(0)
+	_refCount(0),
+	_accessToken(accessToken)
 {
 	std::stringstream s;
 	s << host << ":" << port;
 	_uri = s.str();
-	_ws = NULL;	
+	_ws = NULL;
 
 }
 
 SIOClientImpl::~SIOClientImpl(void) {
-	
+
 	_thread.join();
 
 	disconnect("");
@@ -72,11 +75,11 @@ SIOClientImpl::~SIOClientImpl(void) {
 bool SIOClientImpl::init() {
 	_logger = &(Logger::get("SIOClientLog"));
 
-	if(handshake()) 
+	if(handshake())
 	{
-	
+
 		if(openSocket()) return true;
-	
+
 	}
 
 	return false;
@@ -86,41 +89,51 @@ bool SIOClientImpl::init() {
 bool SIOClientImpl::handshake() {
 	UInt16 aport = _port;
 	_session = new HTTPClientSession(_host, aport);
+	//_session->setKeepAliveTimeout(Poco::Timespan(5000000));
 
-	HTTPRequest req(HTTPRequest::HTTP_POST,"/socket.io/1",HTTPMessage::HTTP_1_1);
+	std::string url("/socket.io/1");
+	if(!_accessToken.empty()){
+		url += "?access_token=" + _accessToken;
+	}
+	HTTPRequest req(HTTPRequest::HTTP_POST,url,HTTPMessage::HTTP_1_1);
 
-	HTTPResponse res;
+	/*HTMLForm form;
+	if(!_accessToken.empty()){
+		form.set("access_token", _accessToken);
+	}*/
 
 	try {
 		_session->sendRequest(req);
+		//form.prepareSubmit(req);
+		//form.write(_session->sendRequest(req));
+		HTTPResponse res;
+		std::istream& rs = _session->receiveResponse(res);
+
+		std::cout << res.getStatus() << " " << res.getReason() << std::endl;
+
+		if (res.getStatus() == 200)
+		{
+			std::string temp;
+
+			StreamCopier::copyToString(rs, temp);
+
+			_logger->information("response: %s\n",temp);
+
+			StringTokenizer msg(temp, ":");
+
+			_logger->information("session: %s",msg[0]);
+			_logger->information("heartbeat: %s",msg[1]);
+			_logger->information("timeout: %s",msg[2]);
+			_logger->information("transports: %s",msg[3]);
+
+			_sid = msg[0];
+			_heartbeat_timeout = atoi(msg[1].c_str());
+			_timeout = atoi(msg[2].c_str());
+
+			return true;
+		}
 	} catch (std::exception &e) {
-		return false;
-	}
-
-	std::istream& rs = _session->receiveResponse(res);
-
-	std::cout << res.getStatus() << " " << res.getReason() << std::endl;
-
-	if (res.getStatus() != Poco::Net::HTTPResponse::HTTP_UNAUTHORIZED)
-	{
-		std::string temp;
-
-		StreamCopier::copyToString(rs, temp);
-
-		_logger->information("response: %s\n",temp);
-
-		StringTokenizer msg(temp, ":");
-
-		_logger->information("session: %s",msg[0]);
-		_logger->information("heartbeat: %s",msg[1]);
-		_logger->information("timeout: %s",msg[2]);
-		_logger->information("transports: %s",msg[3]);
-
-		_sid = msg[0];
-		_heartbeat_timeout = atoi(msg[1].c_str());
-		_timeout = atoi(msg[2].c_str());
-
-		return true;
+		_logger->error(std::string("error: ") + e.what());
 	}
 
 	return false;
@@ -134,9 +147,9 @@ bool SIOClientImpl::openSocket() {
 
 	do {
 		try {
-		
+
 			_ws = new WebSocket(*_session, req, res);
-			
+
 		}
 		catch(NetException ne) {
 			std::cout << ne.displayText() << " : " << ne.code() << " - " << ne.what() << "\n";
@@ -167,9 +180,9 @@ bool SIOClientImpl::openSocket() {
 }
 
 
-SIOClientImpl* SIOClientImpl::connect(std::string host, int port) {
+SIOClientImpl* SIOClientImpl::connect(std::string host, int port, const std::string& accessToken) {
 
-	SIOClientImpl *s = new SIOClientImpl(host, port);
+	SIOClientImpl *s = new SIOClientImpl(host, port, accessToken);
 
 	if(s && s->init()) {
 
@@ -195,7 +208,7 @@ void SIOClientImpl::disconnect(std::string endpoint) {
 
 void SIOClientImpl::connectToEndpoint(std::string endpoint) {
 
-	std::string s = "1::" + endpoint;	
+	std::string s = "1::" + endpoint;
 
 	_ws->sendFrame(s.data(), s.size());
 
@@ -215,9 +228,9 @@ void SIOClientImpl::run() {
 	monitor();
 
 }
- 
+
 void SIOClientImpl::monitor() {
-	do 
+	do
 	{
 		receive();
 
@@ -228,7 +241,7 @@ void SIOClientImpl::send(std::string endpoint, std::string s) {
 	_logger->information("sending message\n");
 
 	std::stringstream pre;
-	
+
 	pre << "3::" << endpoint << ":" << s;
 
 	std::string msg = pre.str();
@@ -241,7 +254,7 @@ void SIOClientImpl::emit(std::string endpoint, std::string eventname, std::strin
 	_logger->information("emitting event\n");
 
 	std::stringstream pre;
-	
+
 	pre << "5::" << endpoint << ":{\"name\":\"" << eventname << "\",\"args\":" << args << "}";
 
 	_logger->information("event data: %s\n", pre.str());
@@ -280,13 +293,13 @@ bool SIOClientImpl::receive() {
 	std::string payload = "";
 
 	switch(control) {
-		case 0: 
+		case 0:
 			_logger->information("Socket Disconnected\n");
 			break;
-		case 1: 
+		case 1:
 			_logger->information("Connected to endpoint: %s \n", st[2]);
 			break;
-		case 2: 
+		case 2:
 			_logger->information("Heartbeat received\n");
 			break;
 		case 3:
@@ -296,7 +309,7 @@ bool SIOClientImpl::receive() {
 			break;
 		case 4:
 			_logger->information("JSON Message Received\n");
-			
+
 			c->getNCenter()->postNotification(new SIOJSONMessage(st[3]));
 			break;
 		case 5:
@@ -320,7 +333,7 @@ bool SIOClientImpl::receive() {
 			_logger->information("Noop\n");
 			break;
 	}
-	
+
 	return true;
 
 }
