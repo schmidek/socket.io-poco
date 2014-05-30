@@ -56,6 +56,7 @@ private:
 	Thread _thread;
 
 	int _refCount;
+	Poco::Timestamp _lastHeartbeat;
 
 	void onAttemptConnect(Poco::Timer& timer);
 

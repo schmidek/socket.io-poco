@@ -193,6 +193,7 @@ bool SIOClientImpl::openSocket() {
 	_logger->information("WebSocket Created\n");
 
 	_connected = true;
+	_lastHeartbeat = Poco::Timestamp();
 
 	int hbInterval = this->_heartbeat_timeout*.75*1000;
 	_heartbeatTimer = new Timer(hbInterval, hbInterval);
@@ -241,11 +242,24 @@ void SIOClientImpl::connectToEndpoint(std::string endpoint) {
 
 void SIOClientImpl::heartbeat(Poco::Timer& timer) {
 	_logger->information("heartbeat called\n");
+	bool shouldDisconnect = false;
+	try{
 
-	std::string s = "2::";
+		std::string s = "2::";
 
-	_ws->sendFrame(s.data(), s.size());
+		_ws->sendFrame(s.data(), s.size());
 
+		// Check if client timed out
+		if(_lastHeartbeat.isElapsed(this->_heartbeat_timeout*2*1000000)){
+			shouldDisconnect = true;
+		}
+	}catch(...){
+		shouldDisconnect = true;
+	}
+	if(shouldDisconnect){
+		disconnect("");
+		init();
+	}
 }
 
 void SIOClientImpl::run() {
@@ -306,9 +320,13 @@ bool SIOClientImpl::receive() {
 
 	_logger->information("buffer received: \"%s\"\n",s.str());
 
-	int control = atoi(&buffer[0]);
+	int control = 0;
+	if(n > 0)
+		control = atoi(&buffer[0]);
 	StringTokenizer st(s.str(), ":");
-	std::string endpoint = st[2];
+	std::string endpoint;
+	if(st.count() >= 3)
+		endpoint = st[2];
 
 	std::string uri = _uri;
 	uri += endpoint;
@@ -317,9 +335,15 @@ bool SIOClientImpl::receive() {
 
 	std::string payload = "";
 
+	// If we received any message reset heartbeat timer
+	_lastHeartbeat = Poco::Timestamp();
+
 	switch(control) {
 		case 0:
 			_logger->information("Socket Disconnected\n");
+			disconnect("");
+			// Try to reconnect
+			init();
 			break;
 		case 1:
 			_logger->information("Connected to endpoint: %s \n", st[2]);
