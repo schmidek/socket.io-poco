@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <memory>
 
 #include "Poco/Net/HTTPClientSession.h"
 #include "Poco/Net/WebSocket.h"
@@ -10,6 +11,8 @@
 #include "Poco/Thread.h"
 #include "Poco/ThreadTarget.h"
 #include "Poco/RunnableAdapter.h"
+#include "Poco/Util/Timer.h"
+#include "Poco/Util/TimerTask.h"
 
 #include "Poco/JSON/Parser.h"
 
@@ -46,7 +49,7 @@ private:
 	bool _connected;
 	std::string _accessToken;
 
-	HTTPClientSession *_session;
+	HTTPClientSession *_session = NULL;
 	WebSocket *_ws;
 	Timer *_heartbeatTimer;
 	Logger *_logger;
@@ -54,14 +57,27 @@ private:
 
 	int _refCount;
 
+	void onAttemptConnect(Poco::Timer& timer);
+
+	Poco::Util::Timer _timer;
+
 	//SIOEventRegistry* _registry;
 	//SIONotificationHandler *_sioHandler;
+
+	struct ConnectTask : public Poco::Util::TimerTask {
+		SIOClientImpl* sio;
+		int _connectWait;
+
+		ConnectTask(SIOClientImpl* sio, int wait = 1):sio(sio),_connectWait(wait){
+		}
+		void run();
+	};
 
 public:
 
 	bool handshake();
 	bool openSocket();
-	bool init();
+	void init();
 
 	void release();
 	void addref();

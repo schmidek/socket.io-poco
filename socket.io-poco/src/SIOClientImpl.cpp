@@ -1,5 +1,6 @@
 #include "SIOClientImpl.h"
 
+#include <Poco/ConsoleChannel.h>
 #include <Poco/Net/HTMLForm.h>
 #include "Poco/Net/HTTPRequest.h"
 #include "Poco/Net/HTTPResponse.h"
@@ -9,12 +10,13 @@
 #include "Poco/Net/SocketAddress.h"
 #include "Poco/StreamCopier.h"
 #include "Poco/Format.h"
+#include "Poco/Timer.h"
+#include "Poco/Timespan.h"
 #include <iostream>
 #include <sstream>
 #include <limits>
 #include "Poco/StringTokenizer.h"
 #include "Poco/String.h"
-#include "Poco/Timer.h"
 #include "Poco/RunnableAdapter.h"
 #include "Poco/URI.h"
 
@@ -69,27 +71,52 @@ SIOClientImpl::~SIOClientImpl(void) {
 	delete(_heartbeatTimer);
 	delete(_session);
 
+	_timer.cancel();
+
 	SIOClientRegistry::instance()->removeSocket(_uri);
 }
 
-bool SIOClientImpl::init() {
+void SIOClientImpl::ConnectTask::run(){
+	Logger* _logger = &(Logger::get("SIOClientLog"));
+	try{
+		_logger->debug("SIOClientImpl::onAttemptConnect");
+		if(sio->handshake() && sio->openSocket()){
+			_logger->debug("Success");
+			return;
+		}else{
+			// Exponential Backoff with max of 4 mins
+			_connectWait *= 2;
+			if(_connectWait > 240){
+				_connectWait = 240;
+			}
+			_logger->debug("Waiting: "+std::to_string(_connectWait));
+			Poco::Timestamp time = Poco::Timestamp() + _connectWait*1000000;
+			Poco::Util::TimerTask::Ptr task = new ConnectTask(sio, _connectWait);
+			sio->_timer.schedule(task, time);
+		}
+	}catch(std::exception e){
+		_logger->error(e.what());
+	}catch(...){
+		_logger->error("Unknown error");
+	}
+}
+
+void SIOClientImpl::init() {
 	_logger = &(Logger::get("SIOClientLog"));
 
-	if(handshake())
-	{
+	_logger->debug("SIOClientImpl::init");
 
-		if(openSocket()) return true;
-
-	}
-
-	return false;
+	Poco::Util::TimerTask::Ptr task = new ConnectTask(this);
+	_timer.schedule(task, Poco::Timestamp());
 
 }
 
 bool SIOClientImpl::handshake() {
+	_logger->debug("SIOClientImpl::handshake");
 	UInt16 aport = _port;
+	delete(_session);
 	_session = new HTTPClientSession(_host, aport);
-	//_session->setKeepAliveTimeout(Poco::Timespan(5000000));
+	//_session->setTimeout(Poco::Timespan(4000000));
 
 	std::string url("/socket.io/1");
 	if(!_accessToken.empty()){
@@ -140,7 +167,7 @@ bool SIOClientImpl::handshake() {
 }
 
 bool SIOClientImpl::openSocket() {
-
+	_logger->debug("SIOClientImpl::openSocket");
 	UInt16 aport = _port;
 	HTTPRequest req(HTTPRequest::HTTP_GET,"/socket.io/1/websocket/"+_sid,HTTPMessage::HTTP_1_1);
 	HTTPResponse res;
@@ -158,7 +185,6 @@ bool SIOClientImpl::openSocket() {
 				delete _ws;
 				_ws = NULL;
 			}
-
 			Poco::Thread::sleep(2000);
 
 		}
@@ -184,10 +210,9 @@ SIOClientImpl* SIOClientImpl::connect(std::string host, int port, const std::str
 
 	SIOClientImpl *s = new SIOClientImpl(host, port, accessToken);
 
-	if(s && s->init()) {
-
+	if(s) {
+		s->init();
 		return s;
-
 	}
 
 	return NULL;
