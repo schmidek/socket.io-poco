@@ -26,7 +26,7 @@ public:
 
 	bool init();
 
-	static SIOClient* connect(std::string uri, const std::string& accessToken="");
+	static SIOClient* connect(std::string uri, const std::string& query="");
 	void disconnect();
 	void send(std::string s);
 	void emit(std::string eventname, std::string args);

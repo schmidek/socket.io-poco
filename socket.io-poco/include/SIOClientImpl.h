@@ -37,7 +37,7 @@ class SIOClientImpl: public Poco::Runnable
 {
 private:
 	SIOClientImpl();
-	SIOClientImpl(std::string host, int port, std::string accessToken="");
+	SIOClientImpl(std::string host, int port, std::string query="");
 	~SIOClientImpl(void);
 
 	std::string _sid;
@@ -47,7 +47,7 @@ private:
 	int _port;
 	std::string _uri;
 	bool _connected;
-	std::string _accessToken;
+	std::string _query;
 
 	HTTPClientSession *_session = NULL;
 	WebSocket *_ws;
@@ -83,7 +83,7 @@ public:
 	void release();
 	void addref();
 
-	static SIOClientImpl* connect(std::string host, int port, const std::string& accessToken="");
+	static SIOClientImpl* connect(std::string host, int port, const std::string& query="");
 	void disconnect(std::string endpoint);
 	void connectToEndpoint(std::string endpoint);
 	void monitor();

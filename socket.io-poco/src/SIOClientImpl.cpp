@@ -46,11 +46,11 @@ SIOClientImpl::SIOClientImpl() {
 	SIOClientImpl("localhost", 3000);
 }
 
-SIOClientImpl::SIOClientImpl(std::string host, int port, std::string accessToken) :
+SIOClientImpl::SIOClientImpl(std::string host, int port, std::string query) :
 	_port(port),
 	_host(host),
 	_refCount(0),
-	_accessToken(accessToken)
+	_query(query)
 {
 	std::stringstream s;
 	s << host << ":" << port;
@@ -119,20 +119,13 @@ bool SIOClientImpl::handshake() {
 	//_session->setTimeout(Poco::Timespan(4000000));
 
 	std::string url("/socket.io/1");
-	if(!_accessToken.empty()){
-		url += "?access_token=" + _accessToken;
+	if(!_query.empty()){
+		url += "?"+_query;
 	}
 	HTTPRequest req(HTTPRequest::HTTP_POST,url,HTTPMessage::HTTP_1_1);
 
-	/*HTMLForm form;
-	if(!_accessToken.empty()){
-		form.set("access_token", _accessToken);
-	}*/
-
 	try {
 		_session->sendRequest(req);
-		//form.prepareSubmit(req);
-		//form.write(_session->sendRequest(req));
 		HTTPResponse res;
 		std::istream& rs = _session->receiveResponse(res);
 
@@ -207,9 +200,9 @@ bool SIOClientImpl::openSocket() {
 }
 
 
-SIOClientImpl* SIOClientImpl::connect(std::string host, int port, const std::string& accessToken) {
+SIOClientImpl* SIOClientImpl::connect(std::string host, int port, const std::string& query) {
 
-	SIOClientImpl *s = new SIOClientImpl(host, port, accessToken);
+	SIOClientImpl *s = new SIOClientImpl(host, port, query);
 
 	if(s) {
 		s->init();
