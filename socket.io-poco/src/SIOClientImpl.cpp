@@ -114,8 +114,8 @@ void SIOClientImpl::init() {
 bool SIOClientImpl::handshake() {
 	_logger->debug("SIOClientImpl::handshake");
 	UInt16 aport = _port;
-	delete(_session);
-	_session = new HTTPClientSession(_host, aport);
+	if(_session == NULL)
+		_session = new HTTPClientSession(_host, aport);
 	//_session->setTimeout(Poco::Timespan(4000000));
 
 	std::string url("/socket.io/1");
@@ -125,7 +125,10 @@ bool SIOClientImpl::handshake() {
 	HTTPRequest req(HTTPRequest::HTTP_POST,url,HTTPMessage::HTTP_1_1);
 
 	try {
-		_session->sendRequest(req);
+		HTMLForm form;
+
+		form.prepareSubmit(req);
+		form.write(_session->sendRequest(req));
 		HTTPResponse res;
 		std::istream& rs = _session->receiveResponse(res);
 
